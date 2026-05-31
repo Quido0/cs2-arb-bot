@@ -1,144 +1,156 @@
 # CS2 Arbitrage Bot
 
-Бот для арбитража скинов CS2 между **Skinport** и **DMarket**. Находит предметы у которых разница цен после комиссий превышает заданный порог, отправляет алерты в Telegram и сохраняет историю в SQLite.
+A CS2 skin arbitrage bot that monitors price gaps between **Skinport** and **DMarket**, sends Telegram alerts, and stores history in SQLite.
 
 ![demo](assets/demo.gif)
 
 ---
 
-## Как это работает
+## How it works
 
-Скины CS2 торгуются на десятках площадках одновременно. Цена одного предмета может отличаться на 10–30%. Бот каждые N минут:
+CS2 skins trade on dozens of platforms simultaneously. The price of the same item can differ by 10–30%. Every N minutes the bot:
 
-1. Загружает все цены с **Skinport** (публичный API, ~24 000 предметов)
-2. Загружает все цены с **DMarket** (cursor-пагинация, ~10 000 листингов)
-3. Находит разрывы с учётом комиссий (DMarket берёт 2.5% при продаже)
-4. Фильтрует неликвид (менее 5 листингов на Skinport)
-5. Отправляет топ-5 в Telegram и сохраняет в базу данных
+1. Fetches all prices from **Skinport** (public API, ~24 000 items)
+2. Fetches all prices from **DMarket** (cursor pagination, ~10 000 listings)
+3. Finds price gaps after fees (DMarket charges 2.5% on sale)
+4. Filters out illiquid items (fewer than 5 listings on Skinport)
+5. Sends top alerts to Telegram and saves everything to the database
 
-**Реальная математика**: купил на Skinport за $10 → продал на DMarket за $13 → после комиссии 2.5% получил $12.67 → чистый профит $2.67 (26.7%)
-
----
-
-## Возможности
-
-- **GUI на tkinter** — запускается без установки сервера, работает локально
-- **Telegram-алерты** — мгновенные уведомления при нахождении арбитража
-- **Float-фильтр** — фильтрация по износу скина (0.00–1.00)
-- **Фильтр ликвидности** — только предметы с 5+ листингами на Skinport
-- **История в SQLite** — все найденные возможности сохраняются, статистика по топ-предметам
-- **Команда `/potential`** — пишешь боту в Telegram, получаешь суммарный потенциальный профит за сессию
-- **Кэш при rate limit** — если Skinport ответил 429, бот продолжает работу на старых данных
-- **Автосохранение настроек** — все параметры сохраняются автоматически
+**Real math**: buy on Skinport for $10 → sell on DMarket for $13 → after 2.5% fee receive $12.67 → net profit $2.67 (26.7%)
 
 ---
 
-## Установка
+## Features
+
+- **tkinter GUI** — runs locally, no server required
+- **Telegram alerts** — instant notifications when arbitrage is found
+- **Float filter** — filter by item wear value (0.00–1.00)
+- **Liquidity filter** — only items with 5+ listings on Skinport
+- **SQLite history** — all found opportunities are saved, top items stats
+- **Watchlist** — monitor specific items regardless of profit threshold
+- **CSV export** — one click exports full history to a spreadsheet
+- **Countdown timer** — shows time until the next scan
+- **Sound alert** — plays a sound when an opportunity is found
+- **/potential command** — send `/potential` to your bot, get session profit summary
+- **Auto-save settings** — all parameters saved automatically as you type
+
+---
+
+## Installation
 
 ```bash
-git clone https://github.com/your-username/cs2-arbitrage-bot
-cd cs2-arbitrage-bot
+git clone https://github.com/Quido0/cs2-arb-bot
+cd cs2-arb-bot
 pip install -r requirements.txt
-python gui.py
 ```
-
-**Требования**: Python 3.10+
 
 ---
 
-## Настройка
+## Running
+
+```bash
+# Option 1 — double click
+start.bat
+
+# Option 2 — command line (GUI)
+python gui.py
+
+# Option 3 — headless (server, settings via .env)
+python main.py
+```
+
+---
+
+## Setup
 
 ### DMarket API Key
-1. Зайди на [dmarket.com](https://dmarket.com) → профиль → **Settings → API**
-2. Скопируй **Public Key**
-3. Вставь в поле "DMarket API Key" в GUI
+1. Go to [dmarket.com](https://dmarket.com) → profile → **Settings → API**
+2. Copy the **Public Key**
+3. Paste it into the "DMarket API Key" field in the GUI
 
-### Telegram-алерты
-1. Найди [@BotFather](https://t.me/BotFather) в Telegram → `/newbot` → получи токен
-2. Напиши своему боту `/start`
-3. Вставь токен и свой Chat ID в GUI
+### Telegram alerts
+1. Find [@BotFather](https://t.me/BotFather) on Telegram → `/newbot` → get a token
+2. Send `/start` to your new bot
+3. Paste the token and your Chat ID into the GUI
 
-Узнать свой Chat ID: напиши [@userinfobot](https://t.me/userinfobot)
+To find your Chat ID: message [@userinfobot](https://t.me/userinfobot)
 
 ---
 
-## Использование
+## Float filter
 
-```bash
-python gui.py        # GUI-режим (рекомендуется)
-python main.py       # headless-режим (для сервера, настройки через .env)
-```
+Leave both fields empty to disable (scans all wear categories).
 
-### Float-фильтр
-
-Оставь поля пустыми — фильтр выключен (ищет по всем wear-категориям).
-
-Примеры:
-| Хочу найти | Float от | Float до |
+| Goal | Float from | Float to |
 |---|---|---|
-| Только Factory New | 0.00 | 0.07 |
+| Factory New only | 0.00 | 0.07 |
 | Minimal Wear | 0.07 | 0.15 |
-| Низкий float Field-Tested | 0.15 | 0.20 |
-
-### Команды Telegram
-
-| Команда | Описание |
-|---|---|
-| `/potential` | Суммарный потенциальный профит за текущую сессию |
-| `/start` | Список доступных команд |
+| Low float Field-Tested | 0.15 | 0.20 |
 
 ---
 
-## Структура проекта
+## Telegram commands
+
+| Command | Description |
+|---|---|
+| `/potential` | Total potential profit for the current session |
+| `/start` | List available commands |
+
+---
+
+## Project structure
 
 ```
-cs2-arbitrage-bot/
-├── gui.py              — GUI-приложение (главный файл)
-├── main.py             — headless-режим
-├── arbitrage.py        — логика поиска арбитража и float-фильтр
-├── db.py               — SQLite история
-├── notifier.py         — Telegram-алерты
-├── tg_commands.py      — обработчик команд /potential
-├── settings_manager.py — сохранение настроек
-├── config.py           — настройки через env-переменные
-├── build.py            — сборка в .exe
+cs2-arb-bot/
+├── gui.py              — GUI app (main entry point)
+├── main.py             — headless mode
+├── arbitrage.py        — arbitrage logic + float filter
+├── db.py               — SQLite history
+├── notifier.py         — Telegram alerts
+├── tg_commands.py      — /potential command handler
+├── watchlist.py        — watchlist storage and checks
+├── exporter.py         — CSV export
+├── settings_manager.py — settings persistence
+├── config.py           — env-variable config
+├── build.py            — build to .exe
+├── start.bat           — one-click launcher
 ├── apis/
-│   ├── skinport.py     — Skinport API (публичный, с кэшем)
-│   └── dmarket.py      — DMarket API (cursor-пагинация, retry)
+│   ├── skinport.py     — Skinport API (public, with cache)
+│   └── dmarket.py      — DMarket API (cursor pagination, retry)
 └── requirements.txt
 ```
 
 ---
 
-## Комиссии площадок
+## Platform fees
 
-| Площадка | Покупка | Продажа |
+| Platform | Buy fee | Sell fee |
 |---|---|---|
 | Skinport | 0% | 12% |
 | DMarket | ~0% | 2.5% |
-| Steam Market | 0% | 15% (только Steam-кошелёк) |
+| Steam Market | 0% | 15% (Steam wallet only) |
 
-Пара **Skinport → DMarket** даёт чистый вывод реальными деньгами. Steam Market не выводит деньги напрямую.
+**Skinport → DMarket** is the cleanest pair for real cash withdrawal. Steam Market does not allow direct cash withdrawal.
 
 ---
 
-## Сборка в .exe
+## Build to .exe
 
 ```bash
 python build.py
 # → dist/CS2ArbBot.exe
 ```
 
-Один файл, не требует Python на целевой машине.
+Single file, no Python installation required on the target machine.
 
 ---
 
-## Реальные ожидания
+## Realistic expectations
 
-С капиталом **$50–100** при аккуратной работе — **$30–80 в месяц** чистыми. Главный риск — купить неликвидный предмет который будет продаваться неделями. Бот фильтрует по количеству листингов, но финальное решение о покупке остаётся за тобой.
+With **$50–100** capital and careful item selection — **$30–80/month** net. The main risk is buying an illiquid item that sits unsold for weeks. The bot filters by listing count, but the final buy decision is yours.
 
 ---
 
-## Лицензия
+## License
 
 MIT
