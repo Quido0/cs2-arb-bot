@@ -1,0 +1,10 @@
+settings.json
+history.db
+*.log
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec
+.env
+assets/demo.gif
