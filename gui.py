@@ -160,13 +160,6 @@ class ArbBot(tk.Tk):
             command=lambda: setattr(self, "_sound_enabled", self._sound_var.get()),
         ).pack(anchor="w", padx=12, pady=(8, 0))
 
-        tk.Button(
-            left, text="▶ Test sound", font=FONT,
-            bg=BG2, fg=TEXT_DIM, activebackground=ACCENT,
-            relief="flat", cursor="hand2",
-            command=self._play_alert,
-        ).pack(anchor="w", padx=12, pady=(2, 0))
-
         self.stats_lbl = tk.Label(left, text="Cycles: 0  |  Found: 0",
                                   font=FONT, bg=BG2, fg=TEXT_DIM)
         self.stats_lbl.pack(pady=(4, 0))
