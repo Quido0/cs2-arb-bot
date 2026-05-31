@@ -159,6 +159,13 @@ class ArbBot(tk.Tk):
             command=lambda: setattr(self, "_sound_enabled", self._sound_var.get()),
         ).pack(anchor="w", padx=12, pady=(8, 0))
 
+        tk.Button(
+            left, text="▶ Test sound", font=FONT,
+            bg=BG2, fg=TEXT_DIM, activebackground=ACCENT,
+            relief="flat", cursor="hand2",
+            command=self._play_alert,
+        ).pack(anchor="w", padx=12, pady=(2, 0))
+
         self.stats_lbl = tk.Label(left, text="Cycles: 0  |  Found: 0",
                                   font=FONT, bg=BG2, fg=TEXT_DIM)
         self.stats_lbl.pack(pady=(4, 0))
@@ -365,6 +372,14 @@ class ArbBot(tk.Tk):
 
         # Reset session stats
         arb_session.reset()
+
+        # Set bot name and description on startup
+        if s["telegram_bot_token"]:
+            threading.Thread(
+                target=_setup_bot_profile,
+                args=(s["telegram_bot_token"],),
+                daemon=True,
+            ).start()
 
         # Start Telegram command listener if credentials are set
         self._tg_listener = None
@@ -677,6 +692,27 @@ class ArbBot(tk.Tk):
     def _on_close(self):
         self._running = False
         self.destroy()
+
+
+def _setup_bot_profile(token: str) -> None:
+    """Set bot name and description via Telegram API on startup."""
+    import requests
+    logger = logging.getLogger("bot_profile")
+    base = f"https://api.telegram.org/bot{token}"
+    calls = [
+        ("setMyName",              {"name": "Yokai CS2 Arbitrage"}),
+        ("setMyDescription",       {"description": "Professional CS2 Skin Arbitrage Scanner by Yokai."}),
+        ("setMyShortDescription",  {"short_description": "CS2 arbitrage scanner by Yokai."}),
+    ]
+    for method, payload in calls:
+        try:
+            r = requests.post(f"{base}/{method}", json=payload, timeout=10)
+            if r.json().get("ok"):
+                logger.info(f"Bot profile: {method} OK")
+            else:
+                logger.warning(f"Bot profile: {method} failed — {r.json().get('description')}")
+        except Exception as e:
+            logger.warning(f"Bot profile: {method} error — {e}")
 
 
 def main():
