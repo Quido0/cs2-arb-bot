@@ -11,6 +11,7 @@ import settings_manager
 import db
 import watchlist as wl
 import exporter
+import analytics
 from apis import skinport, dmarket
 from arbitrage import find_opportunities, Opportunity
 from notifier import notify_opportunities
@@ -370,6 +371,9 @@ class ArbBot(tk.Tk):
         self.stop_btn.config(state="normal")
         self.status_lbl.config(text="● Running", fg=GREEN)
 
+        # Notify developer
+        analytics.ping("launch")
+
         # Reset session stats
         arb_session.reset()
 
@@ -393,6 +397,7 @@ class ArbBot(tk.Tk):
         self._thread.start()
 
     def _stop(self):
+        analytics.ping("stop")
         self._running = False
         if self._tg_listener:
             self._tg_listener.stop()
