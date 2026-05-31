@@ -76,7 +76,7 @@ class TelegramCommandListener:
             except Exception as e:
                 fail_count += 1
                 if fail_count == 1:
-                    logger.warning(f"Telegram unreachable, waiting for recovery... ({e})")
+                    logger.warning("Telegram: connection issue, retrying in background...")
                 wait = min(5 * (2 ** (fail_count - 1)), 60)
                 time.sleep(wait)
 
