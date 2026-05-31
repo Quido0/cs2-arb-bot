@@ -1,6 +1,6 @@
 """
-SQLite хранилище истории арбитражных возможностей.
-Таблица opportunities — каждая найденная сделка с timestamp.
+SQLite storage for arbitrage opportunity history.
+Table: opportunities — every found deal with timestamp.
 """
 import sqlite3
 import os
@@ -17,7 +17,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def init():
-    """Создаёт таблицы если их нет."""
+    """Create tables if they don't exist."""
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS opportunities (
@@ -38,7 +38,7 @@ def init():
 
 
 def save_opportunities(opps) -> None:
-    """Сохраняет список Opportunity в базу."""
+    """Save a list of Opportunity objects to the database."""
     if not opps:
         return
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -66,7 +66,7 @@ def save_opportunities(opps) -> None:
 
 
 def get_recent(limit: int = 200) -> List[Dict[str, Any]]:
-    """Последние N записей, новые сверху."""
+    """Return the last N records, newest first."""
     with _connect() as conn:
         rows = conn.execute(
             "SELECT * FROM opportunities ORDER BY id DESC LIMIT ?", (limit,)
@@ -75,11 +75,11 @@ def get_recent(limit: int = 200) -> List[Dict[str, Any]]:
 
 
 def get_summary() -> Dict[str, Any]:
-    """Агрегированная статистика по всей истории."""
+    """Aggregated statistics across all history."""
     with _connect() as conn:
         row = conn.execute("""
             SELECT
-                COUNT(*)            AS total,
+                COUNT(*)                   AS total,
                 ROUND(SUM(net_profit), 2)  AS total_profit,
                 ROUND(AVG(profit_pct), 1)  AS avg_pct,
                 ROUND(MAX(profit_pct), 1)  AS best_pct,
@@ -92,7 +92,7 @@ def get_summary() -> Dict[str, Any]:
 
 
 def get_top_items(limit: int = 10) -> List[Dict[str, Any]]:
-    """Топ предметов по суммарному профиту за всё время."""
+    """Top items by total profit across all time."""
     with _connect() as conn:
         rows = conn.execute("""
             SELECT
@@ -109,5 +109,5 @@ def get_top_items(limit: int = 10) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
-# Инициализируем при импорте
+# Initialise on import
 init()

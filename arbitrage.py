@@ -2,15 +2,15 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import config
 
-MIN_LIQUIDITY = 5   # минимум листингов на Skinport
+MIN_LIQUIDITY = 5   # minimum listings on Skinport to consider an item liquid
 
-# Float границы по категориям износа CS2
+# CS2 float boundaries per wear category
 FLOAT_RANGES = {
-    "Factory New":        (0.00, 0.07),
-    "Minimal Wear":       (0.07, 0.15),
-    "Field-Tested":       (0.15, 0.38),
-    "Well-Worn":          (0.38, 0.45),
-    "Battle-Scarred":     (0.45, 1.00),
+    "Factory New":    (0.00, 0.07),
+    "Minimal Wear":   (0.07, 0.15),
+    "Field-Tested":   (0.15, 0.38),
+    "Well-Worn":      (0.38, 0.45),
+    "Battle-Scarred": (0.45, 1.00),
 }
 
 
@@ -24,13 +24,13 @@ def float_wear(f: float) -> str:
 @dataclass
 class Opportunity:
     name: str
-    buy_price: float          # цена покупки на Skinport
-    sell_price: float         # цена продажи на DMarket (до комиссии)
-    sell_after_fee: float     # получим на руки после комиссии DMarket
-    net_profit: float         # чистый профит в USD
-    profit_pct: float         # профит в %
-    qty: int                  # количество листингов на Skinport (ликвидность)
-    float_value: Optional[float] = field(default=None)  # float DMarket-листинга
+    buy_price: float              # purchase price on Skinport
+    sell_price: float             # sell price on DMarket (before fee)
+    sell_after_fee: float         # amount received after DMarket fee
+    net_profit: float             # net profit in USD
+    profit_pct: float             # profit in %
+    qty: int                      # number of listings on Skinport (liquidity)
+    float_value: Optional[float] = field(default=None)  # float of the DMarket listing
 
     @property
     def wear(self) -> str:
@@ -47,10 +47,10 @@ class Opportunity:
     def __str__(self) -> str:
         return (
             f"{self.name}\n"
-            f"  Купить Skinport:  ${self.buy_price:.2f} (листингов: {self.qty})\n"
-            f"  Продать DMarket:  ${self.sell_price:.2f} → ${self.sell_after_fee:.2f}\n"
-            f"  Профит:           ${self.net_profit:.2f} ({self.profit_pct:.1f}%)\n"
-            f"  Float:            {self.float_str}"
+            f"  Buy  Skinport: ${self.buy_price:.2f} (listings: {self.qty})\n"
+            f"  Sell DMarket:  ${self.sell_price:.2f} → ${self.sell_after_fee:.2f} after fee\n"
+            f"  Profit:        ${self.net_profit:.2f} ({self.profit_pct:.1f}%)\n"
+            f"  Float:         {self.float_str}"
         )
 
 
@@ -61,7 +61,7 @@ def find_opportunities(
     min_price: float = config.MIN_PRICE_USD,
     max_price: float = config.MAX_PRICE_USD,
     min_liquidity: int = MIN_LIQUIDITY,
-    max_float: Optional[float] = None,   # None = не фильтруем
+    max_float: Optional[float] = None,
     min_float: Optional[float] = None,
 ) -> List[Opportunity]:
     results: List[Opportunity] = []
@@ -81,7 +81,7 @@ def find_opportunities(
         dm_price = dm_data["price"]
         float_val = dm_data.get("float")
 
-        # Float-фильтр (если задан)
+        # Float filter (only applied when set)
         if float_val is not None:
             if max_float is not None and float_val > max_float:
                 continue

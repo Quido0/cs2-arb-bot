@@ -1,4 +1,5 @@
 settings.json
+.claude/
 history.db
 *.log
 __pycache__/

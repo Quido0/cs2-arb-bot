@@ -12,6 +12,8 @@ DEFAULTS = {
     "max_price_usd": 500.0,
     "poll_interval": 300,
     "max_alerts": 5,
+    "min_float": "",
+    "max_float": "",
 }
 
 

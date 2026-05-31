@@ -11,7 +11,7 @@ TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 def send_telegram(message: str) -> bool:
     if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHAT_ID:
-        logger.warning("Telegram не настроен — вывод в консоль")
+        logger.warning("Telegram not configured — printing to console")
         print(message)
         return False
     try:
@@ -27,30 +27,29 @@ def send_telegram(message: str) -> bool:
         r.raise_for_status()
         return True
     except Exception as e:
-        logger.error(f"Telegram ошибка: {e}")
+        logger.error(f"Telegram error: {e}")
         return False
 
 
 def format_opportunity(opp: Opportunity) -> str:
-    liquidity = "🟢 Ликвидный" if opp.qty >= 20 else "🟡 Средний" if opp.qty >= 5 else "🔴 Мало"
-    float_line = f"\nFloat:            <code>{opp.float_str}</code>" if opp.float_value else ""
+    liquidity = "🟢 Liquid" if opp.qty >= 20 else "🟡 Medium" if opp.qty >= 5 else "🔴 Low"
+    float_line = f"\nFloat:      <code>{opp.float_str}</code>" if opp.float_value else ""
     return (
-        f"<b>Арбитраж найден</b>\n\n"
+        f"<b>Arbitrage found</b>\n\n"
         f"<b>{opp.name}</b>\n"
-        f"Купить Skinport:  <b>${opp.buy_price:.2f}</b>\n"
-        f"Продать DMarket:  <b>${opp.sell_price:.2f}</b> → ${opp.sell_after_fee:.2f}\n"
-        f"Чистый профит:    <b>${opp.net_profit:.2f} ({opp.profit_pct:.1f}%)</b>\n"
-        f"Листингов:        {opp.qty} — {liquidity}"
+        f"Buy  Skinport:  <b>${opp.buy_price:.2f}</b>\n"
+        f"Sell DMarket:   <b>${opp.sell_price:.2f}</b> → ${opp.sell_after_fee:.2f}\n"
+        f"Net profit:     <b>${opp.net_profit:.2f} ({opp.profit_pct:.1f}%)</b>\n"
+        f"Listings:       {opp.qty} — {liquidity}"
         f"{float_line}"
     )
 
 
 def notify_opportunities(opportunities: List[Opportunity], max_alerts: int = config.MAX_ALERTS) -> None:
     if not opportunities:
-        logger.info("Арбитражных возможностей не найдено")
+        logger.info("No arbitrage opportunities found")
         return
 
-    logger.info(f"Найдено {len(opportunities)} возможностей, отправляем топ {min(len(opportunities), max_alerts)}")
+    logger.info(f"Found {len(opportunities)} opportunities, sending top {min(len(opportunities), max_alerts)}")
     for opp in opportunities[:max_alerts]:
-        msg = format_opportunity(opp)
-        send_telegram(msg)
+        send_telegram(format_opportunity(opp))

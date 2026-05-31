@@ -7,24 +7,24 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.skinport.com/v1/items"
 
-_last_prices: Dict[str, float] = {}   # кэш последнего успешного ответа
-_blocked_until: float = 0             # timestamp до которого не делаем запросы
+_last_prices: Dict[str, dict] = {}   # cache of last successful response
+_blocked_until: float = 0            # timestamp until which requests are suppressed
 
 
 def get_prices(currency: str = "USD") -> Dict[str, dict]:
     """
-    Возвращает {market_hash_name: {"price": float, "qty": int}} для всех предметов CS2.
-    При 429 не ждёт — сразу возвращает кэш, помечает время разблокировки.
+    Returns {market_hash_name: {"price": float, "qty": int}} for all CS2 items.
+    On 429 returns cache immediately without blocking the scan loop.
     """
     global _last_prices, _blocked_until
 
-    # Ещё в cooldown — отдаём кэш без запроса
+    # Still in cooldown — return cache without making a request
     remaining = _blocked_until - time.time()
     if remaining > 0:
         mins = int(remaining // 60)
         secs = int(remaining % 60)
-        label = f"{mins}м {secs}с" if mins else f"{secs}с"
-        logger.info(f"Skinport: cooldown ещё {label}, используем кэш ({len(_last_prices)} предметов)")
+        label = f"{mins}m {secs}s" if mins else f"{secs}s"
+        logger.info(f"Skinport: cooldown {label} remaining, using cache ({len(_last_prices)} items)")
         return _last_prices
 
     try:
@@ -41,13 +41,11 @@ def get_prices(currency: str = "USD") -> Dict[str, dict]:
 
         if r.status_code == 429:
             retry_after = int(r.headers.get("Retry-After", 300))
-            # Ограничиваем — не ждём больше 10 минут
-            cooldown = min(retry_after, 600)
+            cooldown = min(retry_after, 600)   # cap at 10 minutes
             _blocked_until = time.time() + cooldown
-            mins = cooldown // 60
             logger.warning(
-                f"Skinport: rate limit (сервер просит {retry_after}с, "
-                f"ждём {mins}м). Используем кэш ({len(_last_prices)} предметов)."
+                f"Skinport: rate limited (server asked {retry_after}s, "
+                f"waiting {cooldown // 60}m). Using cache ({len(_last_prices)} items)."
             )
             return _last_prices
 
@@ -62,11 +60,11 @@ def get_prices(currency: str = "USD") -> Dict[str, dict]:
                 prices[name] = {"price": min_price / 100.0, "qty": quantity}
 
         _last_prices = prices
-        logger.info(f"Skinport: загружено {len(prices)} предметов")
+        logger.info(f"Skinport: loaded {len(prices)} items")
         return prices
 
     except Exception as e:
-        logger.error(f"Skinport API ошибка: {e}")
+        logger.error(f"Skinport API error: {e}")
         if _last_prices:
-            logger.info(f"Skinport: используем кэш ({len(_last_prices)} предметов)")
+            logger.info(f"Skinport: using cache ({len(_last_prices)} items)")
         return _last_prices

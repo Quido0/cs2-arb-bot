@@ -1,13 +1,13 @@
 """
-Запусти: python build.py
-Результат: dist/CS2ArbBot.exe  (один файл, без установки)
+Run: python build.py
+Output: dist/CS2ArbBot.exe  (single file, no installation required)
 """
 import subprocess
 import sys
 import os
 
 def main():
-    # Убеждаемся что PyInstaller установлен
+    # Ensure PyInstaller is installed
     subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller", "-q"])
 
     icon = "icon.ico" if os.path.exists("icon.ico") else None
@@ -15,9 +15,9 @@ def main():
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile",
-        "--windowed",               # без консоли (GUI-приложение)
+        "--windowed",               # no console window (GUI app)
         "--name", "CS2ArbBot",
-        "--add-data", "apis;apis",  # включаем подпапку apis
+        "--add-data", "apis;apis",  # include apis subfolder
         "--clean",
     ]
     if icon:
@@ -25,9 +25,9 @@ def main():
 
     cmd.append("gui.py")
 
-    print("Собираем CS2ArbBot.exe ...")
+    print("Building CS2ArbBot.exe ...")
     subprocess.check_call(cmd)
-    print("\nГотово: dist/CS2ArbBot.exe")
+    print("\nDone: dist/CS2ArbBot.exe")
 
 
 if __name__ == "__main__":

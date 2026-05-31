@@ -1,6 +1,8 @@
 """
-Слушает команды от пользователя в Telegram (long polling).
-Поддерживает /potential — статистика потенциального профита за сессию.
+Listens for Telegram commands via long polling.
+Supported commands:
+  /potential — total potential profit for the current session
+  /start     — list available commands
 """
 import requests
 import logging
@@ -12,13 +14,14 @@ from arbitrage import Opportunity
 
 logger = logging.getLogger(__name__)
 
-# ── Хранилище сессии ──────────────────────────────────────────────────────────
+
+# ── Session storage ───────────────────────────────────────────────────────────
 
 class SessionStats:
     def __init__(self):
         self._lock = threading.Lock()
         self.started_at: datetime = datetime.now()
-        self.all_opps: List[Opportunity] = []   # все найденные возможности
+        self.all_opps: List[Opportunity] = []
         self.cycles: int = 0
 
     def add(self, opps: List[Opportunity]):
@@ -37,7 +40,7 @@ class SessionStats:
             return list(self.all_opps), self.cycles, self.started_at
 
 
-# Глобальный объект — используется из gui.py и этого модуля
+# Global instance shared with gui.py
 session = SessionStats()
 
 
@@ -56,7 +59,7 @@ class TelegramCommandListener:
         self._running = True
         self._thread = threading.Thread(target=self._poll_loop, daemon=True)
         self._thread.start()
-        logger.info("Telegram команды: слушаем /potential")
+        logger.info("Telegram commands: listening for /potential")
 
     def stop(self):
         self._running = False
@@ -68,14 +71,12 @@ class TelegramCommandListener:
                 updates = self._get_updates()
                 for upd in updates:
                     self._handle(upd)
-                fail_count = 0          # сброс при успехе
+                fail_count = 0
                 time.sleep(2)
             except Exception as e:
                 fail_count += 1
-                # Логируем только первую ошибку подряд, потом молчим
                 if fail_count == 1:
-                    logger.warning(f"Telegram недоступен, жду восстановления... ({e})")
-                # Экспоненциальная пауза: 5с → 10с → 20с → макс 60с
+                    logger.warning(f"Telegram unreachable, waiting for recovery... ({e})")
                 wait = min(5 * (2 ** (fail_count - 1)), 60)
                 time.sleep(wait)
 
@@ -96,7 +97,7 @@ class TelegramCommandListener:
         text = msg.get("text", "").strip().lower()
         from_id = str(msg.get("chat", {}).get("id", ""))
 
-        # Отвечаем только своему chat_id
+        # Only respond to the configured chat
         if from_id != self.chat_id:
             return
 
@@ -104,8 +105,8 @@ class TelegramCommandListener:
             self._send(self._build_potential_report())
         elif text == "/start":
             self._send(
-                "CS2 Arb Bot активен.\n\n"
-                "/potential — потенциальный профит за сессию"
+                "CS2 Arb Bot is running.\n\n"
+                "/potential — potential profit for the current session"
             )
 
     def _build_potential_report(self) -> str:
@@ -114,9 +115,8 @@ class TelegramCommandListener:
         if not opps:
             elapsed = _fmt_elapsed(started_at)
             return (
-                f"За текущую сессию ({elapsed}) "
-                f"возможностей пока не найдено.\n"
-                f"Циклов сканирования: {cycles}"
+                f"No opportunities found yet ({elapsed} elapsed).\n"
+                f"Scan cycles completed: {cycles}"
             )
 
         total_invested = sum(o.buy_price for o in opps)
@@ -125,7 +125,6 @@ class TelegramCommandListener:
         best           = max(opps, key=lambda o: o.profit_pct)
         elapsed        = _fmt_elapsed(started_at)
 
-        # Топ-5 по профиту
         top5 = sorted(opps, key=lambda o: o.net_profit, reverse=True)[:5]
         top5_lines = "\n".join(
             f"  • {o.name[:35]}: +${o.net_profit:.2f} ({o.profit_pct:.1f}%)"
@@ -133,15 +132,15 @@ class TelegramCommandListener:
         )
 
         return (
-            f"<b>Потенциал сессии</b>\n"
-            f"Время: {elapsed} | Циклов: {cycles}\n\n"
-            f"Возможностей найдено: <b>{len(opps)}</b>\n"
-            f"Суммарно инвестиций: <b>${total_invested:.2f}</b>\n"
-            f"Суммарный профит:    <b>${total_profit:.2f}</b>\n"
-            f"Средний профит:      <b>{avg_pct:.1f}%</b>\n\n"
-            f"Лучшая сделка: <b>{best.name[:40]}</b>\n"
+            f"<b>Session Potential</b>\n"
+            f"Elapsed: {elapsed} | Cycles: {cycles}\n\n"
+            f"Opportunities found: <b>{len(opps)}</b>\n"
+            f"Total to invest:     <b>${total_invested:.2f}</b>\n"
+            f"Total profit:        <b>${total_profit:.2f}</b>\n"
+            f"Average profit:      <b>{avg_pct:.1f}%</b>\n\n"
+            f"Best deal: <b>{best.name[:40]}</b>\n"
             f"  +${best.net_profit:.2f} ({best.profit_pct:.1f}%)\n\n"
-            f"Топ-5 по сумме профита:\n{top5_lines}"
+            f"Top 5 by profit:\n{top5_lines}"
         )
 
     def _send(self, text: str):
@@ -152,7 +151,7 @@ class TelegramCommandListener:
                 timeout=10,
             )
         except Exception as e:
-            logger.error(f"Telegram отправка ошибка: {e}")
+            logger.error(f"Telegram send error: {e}")
 
 
 def _fmt_elapsed(since: datetime) -> str:
@@ -160,7 +159,7 @@ def _fmt_elapsed(since: datetime) -> str:
     h, rem = divmod(int(delta.total_seconds()), 3600)
     m, s   = divmod(rem, 60)
     if h:
-        return f"{h}ч {m}м"
+        return f"{h}h {m}m"
     if m:
-        return f"{m}м {s}с"
-    return f"{s}с"
+        return f"{m}m {s}s"
+    return f"{s}s"
