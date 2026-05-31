@@ -66,11 +66,16 @@ def save_opportunities(opps) -> None:
 
 
 def get_recent(limit: int = 200) -> List[Dict[str, Any]]:
-    """Return the last N records, newest first."""
+    """Return the last N records, newest first. limit=0 returns all records."""
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM opportunities ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
+        if limit == 0:
+            rows = conn.execute(
+                "SELECT * FROM opportunities ORDER BY id DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM opportunities ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
     return [dict(r) for r in rows]
 
 

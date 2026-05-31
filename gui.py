@@ -1,13 +1,16 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox, filedialog
 import threading
 import queue
 import time
 import logging
+import winsound
 from datetime import datetime
 
 import settings_manager
 import db
+import watchlist as wl
+import exporter
 from apis import skinport, dmarket
 from arbitrage import find_opportunities, Opportunity
 from notifier import notify_opportunities
@@ -52,6 +55,9 @@ class ArbBot(tk.Tk):
         self._running = False
         self._thread: threading.Thread | None = None
         self._tg_listener: TelegramCommandListener | None = None
+        self._next_scan_at: float = 0        # timestamp of next scan
+        self._sound_enabled: bool = True
+        self._watchlist: list = wl.load()
 
         self._build_ui()
         self._apply_settings_to_ui()
@@ -76,6 +82,10 @@ class ArbBot(tk.Tk):
         self.status_lbl = tk.Label(header, text="● Stopped", font=FONT_B,
                                    bg=ACCENT, fg=RED)
         self.status_lbl.pack(side="right", padx=20)
+        self.timer_lbl = tk.Label(header, text="", font=FONT,
+                                  bg=ACCENT, fg=TEXT_DIM)
+        self.timer_lbl.pack(side="right", padx=10)
+        self._tick_timer()
 
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True, padx=10, pady=10)
@@ -140,6 +150,15 @@ class ArbBot(tk.Tk):
             command=self._save_settings,
         ).pack(fill="x")
 
+        # Sound toggle
+        self._sound_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            left, text="🔔  Sound alert on find", variable=self._sound_var,
+            font=FONT, bg=BG2, fg=TEXT_DIM, selectcolor=BG2,
+            activebackground=BG2, activeforeground=TEXT,
+            command=lambda: setattr(self, "_sound_enabled", self._sound_var.get()),
+        ).pack(anchor="w", padx=12, pady=(8, 0))
+
         self.stats_lbl = tk.Label(left, text="Cycles: 0  |  Found: 0",
                                   font=FONT, bg=BG2, fg=TEXT_DIM)
         self.stats_lbl.pack(pady=(4, 0))
@@ -197,6 +216,11 @@ class ArbBot(tk.Tk):
         self.notebook.add(tab2, text="  History  ")
         self._build_history_tab(tab2)
 
+        # ── Tab 3: Watchlist ──
+        tab3 = tk.Frame(self.notebook, bg=BG)
+        self.notebook.add(tab3, text="  Watchlist  ")
+        self._build_watchlist_tab(tab3)
+
     def _build_history_tab(self, parent):
         self.hist_summary = tk.Label(
             parent, text="Loading...", font=FONT, bg=BG, fg=TEXT_DIM,
@@ -222,11 +246,18 @@ class ArbBot(tk.Tk):
             self.hist_tree.column(col, width=w, anchor="center" if col != "Item" else "w")
         self.hist_tree.pack(fill="both", expand=True)
 
+        btn_row = tk.Frame(parent, bg=BG)
+        btn_row.pack(pady=6)
         tk.Button(
-            parent, text="↻ Refresh history", font=FONT,
+            btn_row, text="↻ Refresh", font=FONT,
             bg=ACCENT, fg=TEXT, relief="flat", cursor="hand2",
             command=self._refresh_history,
-        ).pack(pady=6)
+        ).pack(side="left", padx=(0, 8))
+        tk.Button(
+            btn_row, text="⬇ Export CSV", font=FONT,
+            bg=GREEN, fg="#0f172a", relief="flat", cursor="hand2",
+            command=self._export_csv,
+        ).pack(side="left")
 
         self._refresh_history()
 
@@ -405,11 +436,26 @@ class ArbBot(tk.Tk):
                 cfg.TELEGRAM_BOT_TOKEN = s["telegram_bot_token"]
                 cfg.TELEGRAM_CHAT_ID   = s["telegram_chat_id"]
                 notify_opportunities(opps, max_alerts=s["max_alerts"])
+                self.q.put(("sound", None))
             else:
                 logger.info("No opportunities found")
 
-            logger.info(f"Next scan in {s['poll_interval']}s")
-            self._sleep_interruptible(s["poll_interval"])
+            # Check watchlist hits (no profit filter)
+            if self._watchlist:
+                hits = wl.check_hits(sp, dm, self._watchlist)
+                self.q.put(("watchlist_hits", hits))
+                for h in hits:
+                    if h["profit"] > 0:
+                        logger.info(
+                            f"[Watchlist] {h['name']} — "
+                            f"buy ${h['buy']:.2f} / sell ${h['sell']:.2f} / "
+                            f"profit ${h['profit']:.2f} ({h['pct']:.1f}%)"
+                        )
+
+            interval = s["poll_interval"]
+            self._next_scan_at = time.time() + interval
+            logger.info(f"Next scan in {interval}s")
+            self._sleep_interruptible(interval)
 
     def _sleep_interruptible(self, seconds: int):
         for _ in range(seconds):
@@ -432,6 +478,10 @@ class ArbBot(tk.Tk):
                     self.stats_lbl.config(text=f"Cycles: {cycles}  |  Found: {found}")
                 elif kind == "refresh_history":
                     self._refresh_history()
+                elif kind == "sound":
+                    self._play_alert()
+                elif kind == "watchlist_hits":
+                    self._wl_refresh_table(data)
         except queue.Empty:
             pass
         self.after(200, self._poll_queue)
@@ -503,6 +553,124 @@ class ArbBot(tk.Tk):
                 f"{rec['profit_pct']:.1f}%",
                 fv,
             ))
+
+    def _build_watchlist_tab(self, parent):
+        self._section_label(parent, "Watched items — always alerted regardless of profit %")
+
+        # Input row
+        input_row = tk.Frame(parent, bg=BG)
+        input_row.pack(fill="x", pady=(0, 8))
+        self._wl_entry_var = tk.StringVar()
+        tk.Entry(
+            input_row, textvariable=self._wl_entry_var,
+            font=FONT, bg="#0d0d1a", fg=TEXT, insertbackground=TEXT,
+            relief="flat", width=50,
+        ).pack(side="left", ipady=4, padx=(0, 8))
+        tk.Button(
+            input_row, text="+ Add", font=FONT_B,
+            bg=GREEN, fg="#0f172a", relief="flat", cursor="hand2",
+            command=self._wl_add,
+        ).pack(side="left", padx=(0, 4))
+        tk.Button(
+            input_row, text="✕ Remove selected", font=FONT,
+            bg=RED, fg="#0f172a", relief="flat", cursor="hand2",
+            command=self._wl_remove,
+        ).pack(side="left")
+
+        # Watchlist table (name + last seen prices)
+        wl_cols = ("Item", "Skinport $", "DMarket $", "Profit $", "Profit %", "Last seen")
+        self.wl_tree = ttk.Treeview(parent, columns=wl_cols, show="headings", height=10)
+        wl_widths = (300, 90, 90, 80, 80, 140)
+        for col, w in zip(wl_cols, wl_widths):
+            self.wl_tree.heading(col, text=col)
+            self.wl_tree.column(col, width=w, anchor="center" if col != "Item" else "w")
+        self.wl_tree.pack(fill="both", expand=True)
+        self.wl_tree.tag_configure("profit", foreground=GREEN)
+        self.wl_tree.tag_configure("loss",   foreground=RED)
+
+        self._wl_refresh_table()
+
+    def _wl_add(self):
+        name = self._wl_entry_var.get().strip()
+        if not name:
+            return
+        if name not in self._watchlist:
+            self._watchlist.append(name)
+            wl.save(self._watchlist)
+            self._wl_entry_var.set("")
+            self._wl_refresh_table()
+            self._log(f"Watchlist: added '{name}'", "ok")
+
+    def _wl_remove(self):
+        selected = self.wl_tree.selection()
+        if not selected:
+            return
+        for item_id in selected:
+            name = self.wl_tree.item(item_id, "values")[0]
+            if name in self._watchlist:
+                self._watchlist.remove(name)
+        wl.save(self._watchlist)
+        self._wl_refresh_table()
+
+    def _wl_refresh_table(self, hits: list | None = None):
+        for row in self.wl_tree.get_children():
+            self.wl_tree.delete(row)
+        # Build a lookup from latest hits if provided
+        hit_map = {h["name"]: h for h in (hits or [])}
+        for name in self._watchlist:
+            h = hit_map.get(name)
+            if h:
+                tag = "profit" if h["profit"] > 0 else "loss"
+                self.wl_tree.insert("", "end", values=(
+                    name,
+                    f"${h['buy']:.2f}",
+                    f"${h['sell']:.2f}",
+                    f"${h['profit']:.2f}",
+                    f"{h['pct']:.1f}%",
+                    datetime.now().strftime("%H:%M:%S"),
+                ), tags=(tag,))
+            else:
+                self.wl_tree.insert("", "end", values=(
+                    name, "—", "—", "—", "—", "not seen yet"
+                ))
+
+    # ── Export CSV ────────────────────────────────────────────────────────────
+
+    def _export_csv(self):
+        records = db.get_recent(limit=0)   # 0 = all records
+        if not records:
+            messagebox.showinfo("Export", "History is empty — nothing to export")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile=f"arb_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        )
+        if not path:
+            return
+        exporter.export_csv(records, path)
+        self._log(f"Exported {len(records)} records → {path}", "ok")
+        messagebox.showinfo("Export", f"Saved {len(records)} records to:\n{path}")
+
+    # ── Countdown timer ───────────────────────────────────────────────────────
+
+    def _tick_timer(self):
+        if self._running and self._next_scan_at > 0:
+            remaining = max(0, int(self._next_scan_at - time.time()))
+            m, s = divmod(remaining, 60)
+            self.timer_lbl.config(text=f"Next scan: {m}:{s:02d}")
+        else:
+            self.timer_lbl.config(text="")
+        self.after(1000, self._tick_timer)
+
+    # ── Sound alert ───────────────────────────────────────────────────────────
+
+    def _play_alert(self):
+        if self._sound_enabled:
+            try:
+                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+            except Exception:
+                pass
 
     # ── Close ─────────────────────────────────────────────────────────────────
 
